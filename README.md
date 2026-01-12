@@ -21,7 +21,7 @@ The EIA dataset is updated frequently. This project is designed to incrementally
 ### Scripts
 - **crawler.py** – Fetches raw data from the EIA API and inserts it into `raw_generation`. Supports resuming via offset stored in `CrawlMetadata`.  
 - **transform.py** – Builds mapping tables (`States`, `Units`, `Fuels`) and aggregates raw data into `clean_generation`. Handles unit consistency and duplicate detection.  
-- **visualize.py** (planned) – Will query `clean_generation` to perform analysis and generate visualizations.
+- **visualize.py** – Queries `clean_generation` to perform analysis and generate visualizations.
 
 ### Database Schema
 
@@ -29,7 +29,7 @@ The EIA dataset is updated frequently. This project is designed to incrementally
 - Columns: `period`, `plantCode`, `plantName`, `fuel2002`, `fuelTypeDescription`, `state`, `stateDescription`, `primeMover`, `generation`, `units`, `ingestionTimestamp`  
 - Unique constraint: `(period, plantCode, fuel2002)`  
 
-**CrawlMetadata**
+**crawl_metadata**
 - Columns: `pipeline`, `lastOffset`, `lastTimestamp`  
 - Primary key: `pipeline`  
 
@@ -53,3 +53,4 @@ The EIA dataset is updated frequently. This project is designed to incrementally
 - Python  
 - SQLite  
 - EIA Open Data API
+- matplotlib, numpy
