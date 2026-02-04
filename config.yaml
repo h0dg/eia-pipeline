@@ -1,0 +1,18 @@
+eia:
+  base_url: "https://api.eia.gov/v2/"
+  datasets:
+    - name: "facility-fuel"
+      path: "electricity/facility-fuel/data"
+
+database:
+  raw: 
+    path: "data/raw_gen_data.sqlite"
+    table: "raw_generation"
+    metadata_table: "crawl_metadata"
+  clean: 
+    path: "data/clean_gen_data.sqlite"
+    table: "clean_generation"
+    mapping_tables:
+      - "states"
+      - "fuels"
+      - "units"
