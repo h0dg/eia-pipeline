@@ -2,4 +2,4 @@ This program requires an API Key from EIA.gov to run. Please get a free API key 
 https://www.eia.gov/opendata/index.php#bulk-downloads
 
 Enter your API Key below.
-Key: 
+Key:  lsdQZoQfqspTopU0EKGp7FGCI7EO8SSTRurk4EZn
