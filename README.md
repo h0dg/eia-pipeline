@@ -76,7 +76,19 @@ The EIA datasets are updated frequently. This pipeline ensures that new data can
   pip install -r requirements.txt
   ```
 
-3. Run the full pipeline:
+3. Run the full pipeline or individual parts:
   ```bash
   python3 -m src.main --all
+  ```
+  # Pull data from the EIA API
+  ```bash
+  python3 -m src.main --ingest
+  ```
+  # Update database mappings and update the clean dataset
+  ```bash
+  python3 -m src.main --transform
+  ```
+  # Perform analysis and visualization
+  ```bash
+  python3 -m src.main --visualize
   ```
