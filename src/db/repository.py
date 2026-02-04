@@ -300,3 +300,22 @@ class Database:
                 (code, desc)
             )
         self.commit()
+
+    def pull_year_range(self):
+        years = list()
+        for year in self.cur.execute(f'SELECT year FROM {self.table}'):
+            years.append(int(year[0]))
+        ymax = max(years)
+        ymin = min(years)
+
+        return ymax, ymin
+    
+    def aggregate_generation(self, year: int):
+        self.cur.execute(f'''
+            SELECT fuel_code, SUM(generation) 
+            FROM {self.table}
+            WHERE year = ? AND fuel_code != "ALL"
+            GROUP BY fuel_code
+            ORDER BY SUM(generation) DESC
+            ''', (year,))
+        return self.cur.fetchall()

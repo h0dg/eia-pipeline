@@ -1,74 +1,112 @@
-import sqlite3 as sql
+from src.db import Database
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
-conn = sql.connect('eia_data.sqlite')
-cur = conn.cursor()
 
-# Pull Year range from Table
-years = list()
-cur.execute('SELECT year FROM clean_generation')
-for row in cur :
-      years.append(int(row[0]))
-ymax = max(years)
-ymin = min(years)
+# -----------------------------
+# Data Selection / Validation
+# -----------------------------
 
-# User input and input validation
-year = input(f'Enter a year between {ymin} and {ymax}: ')
-try :
-       year = int(year)
-except: 
-       print(
-              f'Invalid input: {year}. '
-              f'Please enter a valid number.'
-       )
-       quit()
-if year < ymin or year > ymax :
-       print(
-              f'{year} is out of range. '
-              f'Please enter a year within the stated range.'
-       )
-       quit()
+def desired_year(clean_db, year_input: str = None) -> int:
+    """
+    Validate and return a desired year for plotting.
 
-# Aggregate net generation totals per fuel source
-cur.execute('''
-       SELECT fuel_code, SUM(generation) 
-       FROM clean_generation
-       WHERE year = ? AND fuel_code != "ALL"
-       GROUP BY fuel_code
-       ORDER BY SUM(generation) DESC
-       ''', (year,))
-rows = cur.fetchall()
+    :param clean_db: Database object for clean data
+    :param year_input: Optional; string or int input. If None, prompt user
+    :return: int, validated year
+    :raises ValueError: if year is invalid or out of range
+    """
+    ymax, ymin = clean_db.pull_year_range()
 
-# Create numpy arrays (required for matplotlib)
-fuel_codes = []
-generation = []
+    if year_input is None:
+        year_input = input(f"Enter a year between {ymin} and {ymax}: ")
 
-for row in rows :
-       fuel_codes.append(row[0])
-       generation.append(row[1])
+    try:
+        year = int(year_input)
+    except Exception:
+        raise ValueError(f"Invalid input: {year_input}. Must be a number.")
 
-fuel_codes = np.array(fuel_codes)
-generation = np.array(generation)
+    if year < ymin or year > ymax:
+        raise ValueError(f"{year} is out of range. Must be between {ymin} and {ymax}.")
 
-# Plot the Top 10 fuel sources with matplotlib
-plt.bar(fuel_codes[:10], generation[:10])
-plt.title(f'Top 10 Net Electricity Generation for {year}')
-plt.ylabel('Generation (MWh)')
-plt.xlabel('Fuel Type')
+    return year
 
-# force plot to not use scientific notation and use comma separators
-ax = plt.gca()
-ax.yaxis.set_major_formatter(ticker.StrMethodFormatter('{x:,.0f}'))
 
-plt.xticks(rotation=45, ha='right')
-plt.tight_layout()
-plt.show()
+# -----------------------------
+# Data Aggregation
+# -----------------------------
 
-# Program output
-print(f'The top 10 net generating fuel sources of {year} in the U.S. were:')
-for code, total in zip(fuel_codes[:10], generation[:10]) :
-       print(f'{code} generated {round(total):,} MWh')
+def create_arrays(clean_db, year: int):
+    """
+    Aggregate net generation totals per fuel source for a given year.
 
-conn.close()
+    :param clean_db: Database object for clean data
+    :param year: int, year to aggregate
+    :return: tuple of (fuel_codes, generation, top10_list)
+    """
+    fuel_codes, generation = [], []
+
+    for row in clean_db.aggregate_generation(year):
+        fuel_codes.append(row[0])
+        generation.append(row[1])
+
+    fuel_codes = np.array(fuel_codes)
+    generation = np.array(generation)
+
+    top10 = [(code, round(total)) for code, total in zip(fuel_codes[:10], generation[:10])]
+
+    print(f"\nTop 10 net generating fuel sources of {year} in the U.S.:")
+    for code, total in top10:
+        print(f"{code} generated {total:,} MWh")
+
+    return fuel_codes, generation, top10
+
+
+# -----------------------------
+# Visualization
+# -----------------------------
+
+def plot_top10(fuel_codes, generation, year: int):
+    """
+    Plot top 10 electricity generation fuel sources as a bar chart.
+
+    :param fuel_codes: array-like, fuel codes
+    :param generation: array-like, generation values (same order as fuel_codes)
+    :param year: int, year of data
+    """
+    plt.figure(figsize=(10, 6))
+    plt.bar(fuel_codes[:10], generation[:10], color='skyblue')
+    plt.title(f"Top 10 Net Electricity Generation for {year}", fontsize=14)
+    plt.ylabel("Generation (MWh)", fontsize=12)
+    plt.xlabel("Fuel Type", fontsize=12)
+
+    # Format y-axis with commas
+    ax = plt.gca()
+    ax.yaxis.set_major_formatter(ticker.StrMethodFormatter("{x:,.0f}"))
+
+    plt.xticks(rotation=45, ha='right')
+    plt.tight_layout()
+    plt.show()
+
+
+# -----------------------------
+# Main Runner
+# -----------------------------
+
+def main():
+    """
+    Standalone runner for the visualization module.
+    Prompts user for a year and plots top 10 fuel sources.
+    """
+    clean_db = Database("clean")
+    try:
+        year = desired_year(clean_db)
+        fuel_codes, generation, top10 = create_arrays(clean_db, year)
+        plot_top10(fuel_codes, generation, year)
+    finally:
+        clean_db.close()
+
+
+if __name__ == "__main__":
+    main()
