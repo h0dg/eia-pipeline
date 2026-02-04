@@ -1,7 +1,7 @@
 import argparse
 
 from src.ingest.crawler import setup_ingest, crawl_eia_dataset
-from src.transform.transform import (
+from src.transform.clean import (
     setup_transform,
     build_state_mapping,
     build_units_mapping,
