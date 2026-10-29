@@ -1,95 +1,89 @@
-# EIA Energy Data Pipeline
+# EIA Electricity Generation Pipeline
 
-## Overview
-This project ingests public electricity generation data from the U.S. Energy Information Administration (EIA) API, stores raw and cleaned data in local SQLite databases, and provides tools for aggregation, analysis, and visualization. The pipeline is designed for incremental updates, reproducibility, and consistent data handling.
+A Python command-line tool that downloads annual, plant-level U.S. electricity generation data from the EIA Open Data API into SQLite, totals it by year, state, and fuel, and plots the top 10 fuels for a year you choose.
 
-## Motivation
-The EIA datasets are updated frequently. This pipeline ensures that new data can be ingested without duplicating existing records and produces a clean, aggregated dataset suitable for analysis. Separating raw and transformed data helps maintain data integrity and enables consistent historical analyses.
+## How it works
 
-## Pipeline Features
-- **Incremental Data Ingestion**: Fetches data from the EIA API and resumes from the last saved offset.  
-- **Raw Data Storage**: Stores all API responses in the `raw_generation` table with unique constraints to prevent duplication.  
-- **Data Transformation**:  
-  - Mapping tables for `states`, `units`, and `fuels`.  
-  - Aggregates electricity generation into the `clean_generation` table keyed by `(year, state_code, fuel_code)`.  
-  - Enforces unit consistency, foreign keys, and indexes for performance.  
-- **Duplicate Handling**: Detects repeated rows during ingestion and stops if duplicates exceed a threshold.  
-- **Error Handling**: Safely handles API errors and keyboard interrupts without corrupting the database.
+The pipeline has three steps. Each can be run on its own.
 
-### Scripts
+### 1. Ingest (`src/ingest/crawler.py`)
 
-- **main.py** -- Command-line interface to run the pipeline. Supports flags:  
-  - `--ingest` -- Run only the data ingestion step.  
-  - `--transform` -- Run only the transformation step.  
-  - `--visualize` -- Run only the visualization step.
-  - `--all` -- Run both ingestion and transformation steps.  
-- **crawler.py** -- Handles fetching raw data from the EIA API, pagination, and duplicate detection.  
-- **transform.py** -- Builds mapping tables (`states`, `units`, `fuels`) and aggregates raw data into `clean_generation`.  
-- **visualize.py** -- Queries the clean database and generates visualizations of electricity generation trends.
+- Requests the EIA `electricity/facility-fuel` dataset (annual frequency, generation values) one page at a time, using the API's `offset` parameter.
+- Keeps only rows where `primeMover` is `ALL`.
+- Saves rows to the `raw_generation` table in `data/raw_gen_data.sqlite`. A unique constraint on `(period, plantCode, fuel2002)` means rows that are already stored are skipped.
+- Saves its current offset to `crawl_metadata` as it goes and again when the program exits, including after Ctrl-C or a failed request. The next run continues from that offset.
+- When a crawl reaches the end of the data, or stops because of duplicates, the saved offset is reset to 0. The next run then starts from the beginning and skips rows it already has.
+- Stops once more than 10,000 duplicate rows have been seen in a single run (the `max_duplicates` default), on the assumption that it is re-reading data it already has.
 
-### Database Schema
+### 2. Transform (`src/transform/clean.py`)
 
-**raw_generation**
-- Columns: `period`, `plantCode`, `plantName`, `fuel2002`, `fuelTypeDescription`, `state`, `stateDescription`, `primeMover`, `generation`, `units`, `ingestionTimestamp`  
-- Unique constraint: `(period, plantCode, fuel2002)`
+- Builds the `states`, `fuels`, and `units` lookup tables from the raw data. Existing lookup entries are not overwritten.
+- Sums generation by year, state, and fuel code across all plants and writes the result to `clean_generation` in `data/clean_gen_data.sqlite`. If a row for that year, state, and fuel already exists, its generation value is updated.
+- Converts the unit `megawatthours` to `MWh`. This is the only unit it handles. Any other unit, or mixed units within one group, raises an error.
+- Cleans fuel descriptions (title case, `And` becomes `&`) and fixes one misspelling found in the source data ("Municiapl").
 
-**crawl_metadata**
-- Columns: `pipeline`, `lastOffset`, `lastTimestamp`  
-- Primary key: `pipeline`
+### 3. Visualize (`src/analysis/visualize.py`)
 
-**clean_generation**
-- Columns: `year`, `state_code`, `fuel_code`, `generation`, `units`, `updated_at`  
-- Unique constraint: `(year, state_code, fuel_code)`  
-- Foreign keys:  
-  - `state_code` → `states(state_code)`  
-  - `fuel_code` → `fuels(fuel_code)`  
-  - `units` → `units(units_raw)`  
-- Indexes: `year`, `(fuel_code, year)`, `state_code`
+- Prompts for a year within the range found in the clean database.
+- Prints the top 10 fuels by total generation for that year and shows them as a bar chart (matplotlib). The `ALL` fuel code is left out of the ranking.
 
-**Mapping Tables**
-- `states`: Maps state codes to state descriptions.  
-- `units`: Maps raw unit text to normalized units (e.g., `"megawatthours"` → `"MWh"`).  
-- `fuels`: Maps fuel codes to human-readable fuel descriptions.
+`src/main.py` is the command-line entry point. Database paths, table names, and the EIA dataset are set in `config.yaml`. SQLite foreign key enforcement is turned on for every database connection.
 
-## Next Steps
-- Expand visualization scripts with additional plots and analyses.  
-- Add automated checks for new API data.  
-- Implement unit tests for ingestion, transformation, and database functions.  
-- Optionally integrate with interactive dashboards.
+## Setup
 
-## Technologies
-- Python 3  
-- SQLite  
-- EIA Open Data API  
-- matplotlib, numpy, pyyaml, python-dotenv
+You need Python 3 and a free EIA API key (https://www.eia.gov/opendata/).
+
+1. Create a `.env` file in the project root:
+
+   ```
+   EIA-API-KEY=<your_api_key>
+   ```
+
+2. Install dependencies:
+
+   ```
+   pip install -r requirements.txt
+   ```
 
 ## Usage
 
-1. Create a `.env` file with your EIA API key:
+Run from the project root:
 
-  ```text
-  EIA-API-KEY=<your_api_key>
-  ```
+```
+python3 -m src.main --ingest      # download records from the EIA API
+python3 -m src.main --transform   # build lookup tables and the clean dataset
+python3 -m src.main --visualize   # choose a year and plot the top 10 fuels
+python3 -m src.main --all         # ingest, transform, then visualize
+```
 
-2. Install dependencies:
-  ```bash
-  pip install -r requirements.txt
-  ```
+`--visualize` (and so `--all`) stops to ask for a year and opens a chart window.
 
-3. Run the full pipeline or individual parts:
-  - Full run
-  ```bash
-  python3 -m src.main --all
-  ```
-  - Pull data from the EIA API
-  ```bash
-  python3 -m src.main --ingest
-  ```
-  - Update database mappings and update the clean dataset
-  ```bash
-  python3 -m src.main --transform
-  ```
-  - Perform analysis and visualization
-  ```bash
-  python3 -m src.main --visualize
-  ```
+## Database tables
+
+**Raw database** (`data/raw_gen_data.sqlite`)
+
+- `raw_generation`: EIA records (period, plant code and name, fuel, state, prime mover, generation, units, ingestion timestamp). Unique on `(period, plantCode, fuel2002)`.
+- `crawl_metadata`: the last offset and timestamp for each pipeline, used to resume ingestion.
+
+**Clean database** (`data/clean_gen_data.sqlite`)
+
+- `clean_generation`: generation summed by `(year, state_code, fuel_code)`, with units and an update timestamp. Foreign keys point to the three lookup tables.
+- `states`, `fuels`, `units`: lookup tables.
+
+## Limitations
+
+- Only the EIA `facility-fuel` dataset is configured, at annual frequency, and only rows with `primeMover` of `ALL` are kept.
+- A failed API request stops the crawl. There are no retries or rate-limit handling, so rerun to continue.
+- The transform step supports only the `megawatthours` unit.
+- Ingestion is run manually. There is no scheduler.
+- The visualization step produces one chart type and needs a display.
+
+## Possible next steps
+
+- Add retries for failed API requests.
+- Support more EIA datasets and units.
+- Add more charts, and a way to pass the year as a command-line argument.
+
+## Built with
+
+Python 3 (standard-library `urllib` for API calls), SQLite, matplotlib, numpy, PyYAML, python-dotenv.
